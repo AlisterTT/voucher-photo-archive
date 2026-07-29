@@ -718,8 +718,8 @@ async function buildZip(job) {
     const totalBytes = Math.max(1, stats.reduce((sum, stat) => sum + stat.size, 0));
     const exportDir = path.join(taskDir, "exports");
     await fs.mkdir(exportDir, { recursive: true });
-    const output = path.join(exportDir, `${safeSegment(task.name)}_照片_${beijingCompactDateTime()}.zip`);
-    await fs.unlink(output).catch(() => {});
+    const archiveId = crypto.randomBytes(3).toString("hex");
+    const output = path.join(exportDir, `${safeSegment(task.name)}_照片_${beijingCompactDateTime()}_${archiveId}.zip`);
     job.stage = exportQueue.length ? "正在打包（其他任务等待中）" : "正在打包照片";
     await createStoredZip({
       files,
@@ -788,11 +788,19 @@ async function createZipJob(taskId) {
 }
 
 async function invalidateReadyExports(taskId, save = true) {
+  const removals = [];
   for (const [jobId, job] of exportJobs.entries()) {
     if (job.taskId !== taskId || job.status !== "ready") continue;
-    if (job.filePath) fs.unlink(job.filePath).catch(() => {});
+    if (job.filePath) {
+      removals.push(fs.unlink(job.filePath).catch((error) => {
+        if (error.code !== "ENOENT") {
+          console.warn(`旧照片包清理失败：${job.filePath}`, error);
+        }
+      }));
+    }
     exportJobs.delete(jobId);
   }
+  await Promise.all(removals);
   const task = getTask(taskId);
   if (task?.lastExport) delete task.lastExport;
   if (save) await saveTaskIndex();
