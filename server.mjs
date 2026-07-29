@@ -9,6 +9,7 @@ import { parseXlsx, writeRecordsXlsx } from "./scripts/xlsx-portable.mjs";
 import { createStoredZip } from "./scripts/zip-store.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+const configPath = path.join(root, "config.json");
 const publicDir = path.join(root, "public");
 const tasksRoot = path.join(root, "任务数据");
 const taskIndexPath = path.join(tasksRoot, "tasks.json");
@@ -17,8 +18,25 @@ const templatePath = path.join(publicDir, "凭证清单模板.xlsx");
 const legacyRoot = path.join(root, "照片存储");
 const legacyVouchersPath = path.join(root, "data", "vouchers.json");
 const pidFile = path.join(root, ".voucher-server.pid");
-const port = Number(process.env.PORT || 3000);
-const host = process.env.HOST || "0.0.0.0";
+
+function loadServerConfig() {
+  try {
+    return JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw new Error(`无法读取 config.json：${error.message}`);
+  }
+}
+
+const serverConfig = loadServerConfig();
+const configuredPort = process.env.PORT ? process.env.PORT : (serverConfig.port ?? 3000);
+const port = Number(configuredPort);
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error("端口配置无效：请在 config.json 中填写 1 至 65535 之间的整数。");
+}
+const configuredHost = process.env.HOST ? process.env.HOST : (serverConfig.host ?? "0.0.0.0");
+const host = String(configuredHost).trim();
+if (!host) throw new Error("监听地址配置无效：config.json 中的 host 不能为空。");
 const maxBody = 100 * 1024 * 1024;
 const importPreviews = new Map();
 const exportJobs = new Map();

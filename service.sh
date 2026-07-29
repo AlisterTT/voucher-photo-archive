@@ -6,6 +6,23 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PID_FILE="$SCRIPT_DIR/.voucher-server.pid"
 LOG_FILE="$SCRIPT_DIR/service.log"
 SERVER_FILE="$SCRIPT_DIR/server.mjs"
+CONFIG_FILE="$SCRIPT_DIR/config.json"
+
+configured_port() {
+  if [ -n "${PORT:-}" ]; then
+    printf "%s" "$PORT"
+    return
+  fi
+  if command -v node >/dev/null 2>&1 && [ -f "$CONFIG_FILE" ]; then
+    node -e '
+      const fs = require("node:fs");
+      const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).port;
+      if (!Number.isInteger(value) || value < 1 || value > 65535) process.exit(1);
+      process.stdout.write(String(value));
+    ' "$CONFIG_FILE" 2>/dev/null && return
+  fi
+  printf "3000"
+}
 
 read_pid() {
   if [ -f "$PID_FILE" ]; then
@@ -25,16 +42,17 @@ is_our_process() {
 }
 
 show_addresses() {
-  echo "电脑访问：http://localhost:${PORT:-3000}"
+  service_port=$(configured_port)
+  echo "电脑访问：http://localhost:$service_port"
   if command -v ipconfig >/dev/null 2>&1; then
     lan_ip=$(ipconfig getifaddr en0 2>/dev/null || true)
     if [ -n "$lan_ip" ]; then
-      echo "手机访问：http://$lan_ip:${PORT:-3000}"
+      echo "手机访问：http://$lan_ip:$service_port"
     fi
   elif command -v hostname >/dev/null 2>&1; then
     lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     if [ -n "$lan_ip" ]; then
-      echo "手机访问：http://$lan_ip:${PORT:-3000}"
+      echo "手机访问：http://$lan_ip:$service_port"
     fi
   fi
 }

@@ -8,7 +8,17 @@ $PidFile = Join-Path $Root ".voucher-server.pid"
 $LogFile = Join-Path $Root "service.log"
 $ErrorLogFile = Join-Path $Root "service-error.log"
 $ServerFile = Join-Path $Root "server.mjs"
-$Port = if ($env:PORT) { $env:PORT } else { "3000" }
+$ConfigFile = Join-Path $Root "config.json"
+$Config = if (Test-Path $ConfigFile) {
+  try {
+    Get-Content $ConfigFile -Raw | ConvertFrom-Json
+  } catch {
+    throw "无法读取 config.json：$($_.Exception.Message)"
+  }
+} else {
+  [PSCustomObject]@{}
+}
+$Port = if ($env:PORT) { $env:PORT } elseif ($Config.port) { "$($Config.port)" } else { "3000" }
 
 function Read-ServicePid {
   if (Test-Path $PidFile) {
