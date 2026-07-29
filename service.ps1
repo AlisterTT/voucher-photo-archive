@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("menu", "start", "stop", "restart", "status")]
   [string]$Action = "menu"
 )
