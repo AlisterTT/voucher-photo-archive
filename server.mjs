@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import { parseXlsx, writeRecordsXlsx } from "./scripts/xlsx-portable.mjs";
 import { createStoredZip } from "./scripts/zip-store.mjs";
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+const sourceRoot = path.dirname(fileURLToPath(import.meta.url));
+const root = process.pkg ? path.dirname(process.execPath) : sourceRoot;
 const configPath = path.join(root, "config.json");
 const publicDir = path.join(root, "public");
 const tasksRoot = path.join(root, "任务数据");

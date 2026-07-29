@@ -1,0 +1,103 @@
+name: Build Windows portable package
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check JavaScript syntax
+        run: npm run check
+
+      - name: Build Windows executable
+        run: npm run build:windows
+
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        run: |
+          $testDir = Join-Path $PWD "dist\smoke-test"
+          New-Item -ItemType Directory -Force -Path $testDir | Out-Null
+          Copy-Item "dist\build\voucher-photo-archive.exe" $testDir
+          Copy-Item "public" (Join-Path $testDir "public") -Recurse
+          Copy-Item "config.json", "service.cmd", "service.ps1" $testDir
+
+          $env:PORT = "43126"
+          Push-Location $testDir
+
+          try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\service.ps1" start
+            if ($LASTEXITCODE -ne 0) { throw "Portable service script failed to start." }
+
+            $ready = $false
+            foreach ($attempt in 1..30) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $health = Invoke-RestMethod "http://127.0.0.1:43126/api/health"
+                if ($health.ok) {
+                  $ready = $true
+                  break
+                }
+              } catch {}
+            }
+
+            if (-not $ready) {
+              if (Test-Path "service.log") { Get-Content "service.log" }
+              if (Test-Path "service-error.log") { Get-Content "service-error.log" }
+              throw "Packaged executable did not become healthy."
+            }
+
+            $home = Invoke-WebRequest "http://127.0.0.1:43126/" -UseBasicParsing
+            if ($home.StatusCode -ne 200 -or $home.Content -notmatch "财务报销凭证整理") {
+              throw "Packaged homepage check failed."
+            }
+          } finally {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\service.ps1" stop
+            Pop-Location
+            Remove-Item Env:PORT -ErrorAction SilentlyContinue
+            Remove-Item $testDir -Recurse -Force
+          }
+
+      - name: Assemble portable ZIP
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $PWD "dist\voucher-photo-archive-windows-x64"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          Copy-Item "dist\build\voucher-photo-archive.exe" $packageDir
+          Copy-Item "public" (Join-Path $packageDir "public") -Recurse
+          Copy-Item "config.json", "service.cmd", "service.ps1", "README.md" $packageDir
+          Compress-Archive -Path $packageDir `
+            -DestinationPath "dist\voucher-photo-archive-windows-x64.zip" -Force
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: voucher-photo-archive-windows-x64
+          path: dist/voucher-photo-archive-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

@@ -1,5 +1,6 @@
 # Dependencies
 node_modules
+dist/
 
 # Runtime data — may contain photos, records, addresses and admin passwords
 任务数据/

@@ -20,6 +20,12 @@
 
 ## Windows：双击即可使用
 
+### 无需安装环境的便携版
+
+GitHub Actions 会自动生成 `voucher-photo-archive-windows-x64` 构建产物。下载并解压 Windows ZIP 后，直接双击其中的 `service.cmd`，不需要安装 Node.js 或运行 `npm install`。
+
+便携版适用于常见的 64 位 Intel/AMD Windows 电脑。第一次运行时，Windows 可能显示“未知发布者”提示，这是因为公开构建没有商业代码签名证书。
+
 ### 第一次使用
 
 1. 安装 [Node.js LTS](https://nodejs.org/)，版本需要 18 或更高。
