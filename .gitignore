@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Runtime data — may contain photos, records, addresses and admin passwords
+任务数据/
+照片存储/
+data/
+
+# Runtime state and logs
+.voucher-server.pid
+service.log
+service-error.log
+*.log
+
+# Local spreadsheet inspection artifacts
+public/*.inspect.ndjson
+public/凭证清单模板.png
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

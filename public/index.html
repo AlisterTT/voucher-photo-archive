@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1eb" />
+    <title>凭证照片归档</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">财务协作工具</p>
+        <h1>凭证照片归档</h1>
+      </div>
+      <div class="topbar-side">
+        <div id="expiry-countdown" class="expiry-countdown" hidden>
+          <strong id="expiry-countdown-value">--:--:--</strong>
+          <span id="expiry-countdown-label">有效期倒计时</span>
+        </div>
+        <a id="admin-entry" class="admin-entry" href="/admin" aria-label="进入管理">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg>
+          <span>管理入口</span>
+          <i>↗</i>
+        </a>
+      </div>
+    </header>
+
+    <main id="landing" class="landing-shell">
+      <section class="landing-hero">
+        <div class="landing-copy">
+          <p class="eyebrow">财务报销凭证整理</p>
+          <h2 class="landing-headline"><span>拍摄、整理、导出，</span>一处完成。</h2>
+          <p class="landing-summary">通过手机或电脑上传报销凭证照片，完成核对整理后，统一导出照片和凭证记录。</p>
+          <div class="landing-actions">
+            <button id="landing-create" class="launch-action" type="button">
+              <span>导入清单并建立组</span><i aria-hidden="true">↗</i>
+            </button>
+            <a class="template-download" href="/api/template" download>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+              下载 Excel 模板
+            </a>
+          </div>
+          <small id="capacity-note">正在检查可用名额…</small>
+        </div>
+
+        <div class="archive-object" aria-hidden="true">
+          <div class="archive-shadow"></div>
+          <div class="archive-board">
+            <span class="board-code">ARCHIVE / 01</span>
+            <span class="board-mark">凭证<br />归档</span>
+          </div>
+          <div class="photo-slip photo-slip-one"><i></i><span></span></div>
+          <div class="photo-slip photo-slip-two"><i></i><span></span></div>
+          <div class="voucher-paper">
+            <div class="paper-head"><span>VOUCHER</span><strong>已导入</strong></div>
+            <div class="paper-title">凭证拍摄清单</div>
+            <dl>
+              <div><dt>日期</dt><dd>2026 / 07 / 29</dd></div>
+              <div><dt>财务组织</dt><dd>示例公司 A</dd></div>
+              <div><dt>凭证号</dt><dd>记 — 0001</dd></div>
+            </dl>
+            <div class="paper-progress"><i></i><span>3 张照片已归档</span></div>
+          </div>
+          <div class="archive-tab">独立地址</div>
+        </div>
+      </section>
+
+      <section class="landing-flow" aria-labelledby="flow-title">
+        <div class="flow-heading">
+          <p class="eyebrow">工作方式</p>
+          <h3 id="flow-title">从拍摄到导出，只需三步</h3>
+        </div>
+        <ol>
+          <li><span>01</span><div><strong>导入凭证信息</strong><p>填写日期、财务组织和凭证号，金额可选。</p></div></li>
+          <li><span>02</span><div><strong>拍摄并整理</strong><p>通过手机或电脑批量上传，随时预览、旋转和核对照片。</p></div></li>
+          <li><span>03</span><div><strong>统一导出</strong><p>整理完成后，下载照片压缩包和凭证记录表。</p></div></li>
+        </ol>
+      </section>
+    </main>
+
+    <main id="group-main" hidden>
+      <section class="workspace" aria-label="拍摄任务">
+        <div class="workspace-head">
+          <div>
+            <p class="eyebrow">当前拍摄组</p>
+            <h2 id="task-name">载入中…</h2>
+            <small id="task-owner" class="task-owner"></small>
+          </div>
+          <span class="private-mark">独立地址</span>
+        </div>
+        <div class="share-box">
+          <span>本组唯一地址（手机或电脑均可）</span>
+          <div>
+            <input id="share-address" readonly aria-label="本组分享地址" />
+            <button id="copy-address" type="button">复制地址</button>
+          </div>
+          <small class="share-warning">创建人请立即复制并妥善保存。关闭页面后，普通入口不会显示本组；没有这条地址就无法再次进入。</small>
+        </div>
+        <div class="task-actions">
+          <button id="export-photos" type="button">导出全部照片</button>
+          <button id="export-records" type="button">导出本组记录</button>
+          <button id="open-clear" class="danger-text" type="button">清除本组</button>
+        </div>
+        <div id="export-status-bar" class="export-status-bar" hidden>
+          <div>
+            <strong id="export-status-title">照片包正在后台处理</strong>
+            <small id="export-status-detail"></small>
+          </div>
+          <button id="open-export-status" type="button">查看进度</button>
+          <a id="quick-download-zip" hidden>下载 ZIP</a>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="筛选凭证">
+        <label class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.3-4.3m2.3-5.2A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
+          <input id="search" type="search" placeholder="搜索凭证号或财务组织" autocomplete="off" />
+        </label>
+        <div class="filters" role="group" aria-label="状态筛选">
+          <button class="filter active" data-filter="all">全部 <span id="count-all">0</span></button>
+          <button class="filter" data-filter="pending">待上传 <span id="count-pending">0</span></button>
+          <button class="filter" data-filter="done">已上传 <span id="count-done">0</span></button>
+        </div>
+      </section>
+
+      <section class="list-head">
+        <h2 id="list-title">全部凭证</h2>
+        <div class="list-tools">
+          <select id="year" aria-label="按年份筛选"><option value="all">全部年份</option></select>
+          <button id="sort-order" class="sort-order" type="button">↓ 倒序</button>
+        </div>
+      </section>
+      <section id="voucher-list" class="voucher-list" aria-live="polite"></section>
+      <div id="empty" class="empty" hidden>
+        <div>✓</div>
+        <h3>这里暂时没有凭证</h3>
+        <p>可以导入清单，或者换一个筛选条件</p>
+      </div>
+    </main>
+
+    <div id="backdrop" class="backdrop" hidden></div>
+    <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div><p id="sheet-date" class="eyebrow"></p><h2 id="sheet-title"></h2></div>
+        <button id="close-sheet" class="icon-button" aria-label="关闭">×</button>
+      </div>
+      <div id="sheet-meta" class="sheet-meta"></div>
+      <div class="photo-section">
+        <div class="section-title"><h3>凭证照片</h3><span id="photo-count">0 张</span></div>
+        <div id="photo-grid" class="photo-grid"></div>
+        <div class="upload-actions">
+          <label class="upload-button secondary">
+            <input id="camera-input" type="file" accept="image/*" capture="environment" />
+            <span>拍照</span>
+          </label>
+          <label class="upload-button" id="gallery-label">
+            <input id="gallery-input" type="file" accept="image/*" multiple />
+            <span>从相册批量选择</span>
+          </label>
+        </div>
+        <p class="upload-hint">可一次选择多张，也可以分多次追加。拍照保存后，点缩略图即可预览并向左旋转。</p>
+        <p class="storage-note" id="storage-note"></p>
+      </div>
+    </section>
+
+    <section id="preview" class="preview" role="dialog" aria-modal="true" aria-label="大图预览" hidden>
+      <header class="preview-toolbar"><span>大图预览</span><button id="close-preview">关闭</button></header>
+      <div class="preview-stage"><img id="preview-image" alt="凭证照片大图" /></div>
+      <footer class="preview-actions">
+        <button id="rotate-left" class="rotate-button">↶ <span>向左旋转</span></button>
+        <strong id="rotation-label">0°</strong>
+        <button id="save-rotation" class="save-rotation" disabled>保存旋转</button>
+      </footer>
+    </section>
+
+    <section id="confirm-layer" class="modal-layer" role="dialog" aria-modal="true" hidden>
+      <div class="modal-card small">
+        <p class="eyebrow">删除照片</p>
+        <h2>确定删除这张照片？</h2>
+        <p class="modal-copy">照片只有这一份，删除后无法恢复。</p>
+        <div class="modal-actions">
+          <button id="cancel-delete" class="button-muted">取消</button>
+          <button id="confirm-delete" class="button-danger">确认删除</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="import-layer" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="import-title" hidden>
+      <div class="modal-card">
+        <div class="modal-title-row">
+          <div><p class="eyebrow">新增拍摄组</p><h2 id="import-title">导入凭证清单</h2></div>
+          <button class="icon-button close-modal" data-close="import-layer">×</button>
+        </div>
+        <p class="modal-copy">先下载模板填写，再选择文件。每次导入会生成一组独立的拍摄任务。</p>
+        <a class="template-link" href="/api/template" download>下载 Excel 清单模板</a>
+        <label class="field"><span>拍摄组名称</span><input id="import-name" maxlength="40" /></label>
+        <label class="field"><span>使用人姓名</span><input id="owner-name" maxlength="30" autocomplete="name" /></label>
+        <fieldset class="folder-options">
+          <legend>照片文件夹命名</legend>
+          <label>
+            <input type="radio" name="folder-mode" value="nested" checked />
+            <span><strong>年份 / 月份 / 凭证号</strong><small>2026 / 07 / 记-0001</small></span>
+          </label>
+          <label>
+            <input type="radio" name="folder-mode" value="flat" />
+            <span><strong>日期-凭证号（单层）</strong><small>例如：20260728-记-0001</small></span>
+          </label>
+        </fieldset>
+        <fieldset class="validity-options">
+          <legend>拍摄组有效期</legend>
+          <div>
+            <label><input type="radio" name="validity-hours" value="24" checked /><span>24 小时</span></label>
+            <label><input type="radio" name="validity-hours" value="48" /><span>48 小时</span></label>
+            <label><input type="radio" name="validity-hours" value="168" /><span>一周</span></label>
+          </div>
+          <p>到期后本组记录和全部附件会自动删除并释放空间。如需长期使用，请联系管理员设置。</p>
+        </fieldset>
+        <label class="file-picker">
+          <input id="import-file" type="file" accept=".xlsx" />
+          <strong id="import-file-label">选择填写好的 Excel</strong>
+          <span>仅支持 .xlsx</span>
+        </label>
+        <div id="import-preview" class="import-preview" hidden></div>
+        <div class="modal-actions">
+          <button class="button-muted close-modal" data-close="import-layer">取消</button>
+          <button id="preview-import" class="button-dark">读取清单</button>
+          <button id="create-task" class="button-primary" hidden>确认导入</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="clear-layer" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="clear-title" hidden>
+      <div class="modal-card small">
+        <p class="eyebrow">高风险操作</p>
+        <h2 id="clear-title">清除本组全部内容</h2>
+        <p id="clear-summary" class="modal-copy"></p>
+        <label class="field"><span>请输入大写 OK 确认</span><input id="clear-confirmation" autocomplete="off" /></label>
+        <div class="modal-actions">
+          <button class="button-muted close-modal" data-close="clear-layer">取消</button>
+          <button id="confirm-clear" class="button-danger" disabled>永久清除</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="created-link-layer" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="created-link-title" hidden>
+      <div class="modal-card small created-link-card">
+        <div class="created-link-icon" aria-hidden="true">✓</div>
+        <p class="eyebrow">拍摄组已建立</p>
+        <h2 id="created-link-title">先保存本组唯一地址</h2>
+        <p class="modal-copy">普通入口不会显示已经建立的组。请创建人现在复制并保存，之后凭这条地址再次进入。请在倒计时结束前完成并导出资料，到期后记录和附件会自动删除。</p>
+        <label class="created-link-box">
+          <span>本组唯一地址</span>
+          <input id="created-share-address" readonly aria-label="新建组唯一地址" />
+        </label>
+        <div class="modal-actions created-link-actions">
+          <button id="created-link-done" class="button-muted" type="button">我已保存，进入拍摄</button>
+          <button id="copy-created-address" class="button-primary" type="button">复制地址</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="export-layer" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="export-title" hidden>
+      <div class="modal-card small">
+        <p class="eyebrow">照片打包</p>
+        <h2 id="export-title">正在准备下载</h2>
+        <p id="export-stage" class="modal-copy">正在排队…</p>
+        <div class="export-meter"><i id="export-bar"></i></div>
+        <strong id="export-percent" class="export-percent">0%</strong>
+        <div class="modal-actions single">
+          <button id="close-export" class="button-muted">后台继续</button>
+          <a id="download-zip" class="button-primary link-button" hidden>下载 ZIP</a>
+          <button id="rebuild-zip" class="button-dark" hidden>按最新内容重新打包</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="export-confirm-layer" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="export-confirm-title" hidden>
+      <div class="modal-card small">
+        <p class="eyebrow">导出确认</p>
+        <h2 id="export-confirm-title">生成本组照片包？</h2>
+        <p id="export-confirm-summary" class="modal-copy"></p>
+        <p class="notice-copy">每次确认都会按当前内容重新生成 ZIP。之后如果又上传、旋转或删除照片，可以再次点击导出。</p>
+        <div class="modal-actions">
+          <button class="button-muted close-modal" data-close="export-confirm-layer">取消</button>
+          <button id="confirm-export" class="button-primary">确认并开始打包</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

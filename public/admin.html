@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1eb" />
+    <title>凭证归档管理</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main id="admin-main" class="admin-shell" hidden>
+      <header class="admin-head">
+        <div>
+          <p class="eyebrow">管理员</p>
+          <h1>凭证归档管理</h1>
+          <p>调整服务器可同时使用的组数，查看各组的使用人与活动情况。</p>
+        </div>
+        <div class="admin-head-actions">
+          <a href="/">返回普通入口</a>
+          <button id="admin-logout" type="button">退出管理</button>
+        </div>
+      </header>
+
+      <section class="capacity-strip" aria-label="组容量">
+        <strong id="capacity-number" class="capacity-number">—/—</strong>
+        <div class="capacity-copy">
+          <strong id="capacity-title">正在读取组状态…</strong>
+          <small id="capacity-detail"></small>
+        </div>
+        <form id="capacity-form" class="capacity-form">
+          <label for="max-tasks">允许组数</label>
+          <input id="max-tasks" type="number" min="1" max="50" inputmode="numeric" required />
+          <button type="submit">保存</button>
+        </form>
+      </section>
+
+      <section>
+        <div class="admin-list-head">
+          <h2>当前拍摄组</h2>
+          <span id="group-total">0 组</span>
+        </div>
+        <div id="admin-error" class="admin-error" hidden></div>
+        <div id="admin-group-list" class="admin-group-list"></div>
+        <div id="admin-empty" class="admin-empty" hidden>
+          <strong>目前没有拍摄组</strong>
+          <span>可以从普通入口导入一份 Excel 清单。</span>
+        </div>
+      </section>
+    </main>
+
+    <section id="admin-login-layer" class="admin-login">
+      <form id="admin-login-form" class="admin-login-panel">
+        <a href="/">← 返回普通入口</a>
+        <p class="eyebrow">管理入口</p>
+        <h1>输入管理员密码</h1>
+        <p>登录后可以管理分组并设置服务器允许的组数。</p>
+        <label class="field">
+          <span>管理员密码</span>
+          <input id="admin-password" type="password" autocomplete="current-password" required autofocus />
+        </label>
+        <button id="admin-login-button" class="button-dark" type="submit">进入管理</button>
+        <small id="admin-login-error" hidden></small>
+      </form>
+    </section>
+
+    <section id="admin-delete-layer" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="admin-delete-title" hidden>
+      <div class="modal-card small">
+        <p class="eyebrow">管理员删除</p>
+        <h2 id="admin-delete-title">永久删除拍摄组？</h2>
+        <p id="admin-delete-summary" class="modal-copy"></p>
+        <label class="field"><span>请输入大写 DELETE 确认</span><input id="admin-delete-confirmation" autocomplete="off" /></label>
+        <div class="modal-actions">
+          <button id="cancel-admin-delete" class="button-muted">取消</button>
+          <button id="confirm-admin-delete" class="button-danger" disabled>永久删除</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>

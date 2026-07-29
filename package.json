@@ -1,0 +1,16 @@
+{
+  "name": "voucher-photo-archive",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/admin.js && node --check scripts/xlsx-portable.mjs && node --check scripts/zip-store.mjs"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
