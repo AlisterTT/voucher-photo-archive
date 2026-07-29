@@ -95,7 +95,7 @@ jobs:
             -DestinationPath "dist\voucher-photo-archive-windows-x64.zip" -Force
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: voucher-photo-archive-windows-x64
           path: dist/voucher-photo-archive-windows-x64.zip
