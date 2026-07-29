@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { parseXlsx, writeRecordsXlsx } from "./scripts/xlsx-portable.mjs";
 import { createStoredZip } from "./scripts/zip-store.mjs";
+import { beijingCompactDateTime, beijingIsoString } from "./scripts/beijing-time.mjs";
 
 const sourceRoot = path.dirname(fileURLToPath(import.meta.url));
 const root = process.pkg ? path.dirname(process.execPath) : sourceRoot;
@@ -43,6 +44,7 @@ const importPreviews = new Map();
 const exportJobs = new Map();
 const exportQueue = [];
 const adminSessions = new Map();
+const recordWriteLocks = new Map();
 let exportWorkerBusy = false;
 let expiryCleanupBusy = false;
 let tasks = [];
@@ -84,6 +86,50 @@ function shortOrganization(organization) {
     .replace(/-基准账簿$/, "")
     .trim();
   return shortened || value;
+}
+
+function limitedSegment(value, maxLength = 36) {
+  const segment = safeSegment(value);
+  const characters = [...segment];
+  return characters.length > maxLength ? characters.slice(0, maxLength).join("") : segment;
+}
+
+function nextAttachmentSequence(names) {
+  const parsed = names
+    .map((name) => /_(\d{3,})_[0-9a-f]{6}(?:_r[^.]*)?\.[^.]+$/i.exec(name))
+    .map((match) => Number(match?.[1]))
+    .filter(Number.isFinite);
+  return Math.max(names.length, 0, ...parsed) + 1;
+}
+
+function attachmentFileName(record, sequence, extension) {
+  const businessDate = String(record.date || "").replace(/\D/g, "").slice(0, 8) || "未设置日期";
+  const organization = limitedSegment(shortOrganization(record.organization));
+  const voucher = limitedSegment(record.voucher);
+  const order = String(sequence).padStart(3, "0");
+  const shortId = crypto.randomBytes(3).toString("hex");
+  const normalizedExtension = extension === ".jpeg" ? ".jpg" : extension;
+  return `${businessDate}_${organization}_${voucher}_${order}_${shortId}${normalizedExtension}`;
+}
+
+function normalizeBeijingTimestamp(value) {
+  if (!value) return value;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? beijingIsoString(parsed) : value;
+}
+
+async function withRecordWriteLock(key, operation) {
+  const previous = recordWriteLocks.get(key) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  recordWriteLocks.set(key, current);
+  await previous.catch(() => {});
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (recordWriteLocks.get(key) === current) recordWriteLocks.delete(key);
+  }
 }
 
 function recordId(record) {
@@ -241,6 +287,13 @@ async function initializeTaskStore() {
     let changed = false;
     tasks = tasks.map((task) => {
       const next = { ...task };
+      for (const field of ["createdAt", "lastActivityAt", "expiresAt"]) {
+        const normalized = normalizeBeijingTimestamp(next[field]);
+        if (normalized !== next[field]) {
+          next[field] = normalized;
+          changed = true;
+        }
+      }
       if (!next.accessToken) {
         next.accessToken = createAccessToken();
         changed = true;
@@ -286,11 +339,11 @@ async function initializeTaskStore() {
   const task = {
     id,
     name: "当前凭证任务",
-    createdAt: new Date().toISOString(),
+    createdAt: beijingIsoString(),
     legacySource: true,
     accessToken: createAccessToken(),
     ownerName: "未填写（旧组）",
-    lastActivityAt: new Date().toISOString(),
+    lastActivityAt: beijingIsoString(),
     folderMode: "nested",
     expiresAt: null,
   };
@@ -314,8 +367,14 @@ async function initializeAdminConfig() {
     changed = true;
   }
   if (!adminConfig.createdAt) {
-    adminConfig.createdAt = new Date().toISOString();
+    adminConfig.createdAt = beijingIsoString();
     changed = true;
+  } else {
+    const normalizedCreatedAt = normalizeBeijingTimestamp(adminConfig.createdAt);
+    if (normalizedCreatedAt !== adminConfig.createdAt) {
+      adminConfig.createdAt = normalizedCreatedAt;
+      changed = true;
+    }
   }
   const configuredMax = Number(adminConfig.maxTasks);
   maxTasks = Number.isInteger(configuredMax) && configuredMax >= 1 && configuredMax <= 50 ? configuredMax : 3;
@@ -363,12 +422,13 @@ async function listImages(taskId, record) {
     if (error.code !== "ENOENT") throw error;
   }
   const task = getTask(taskId);
+  const cacheVersion = Date.now();
   return names
     .filter((name) => /\.(jpe?g|png|webp|heic)$/i.test(name))
     .sort()
     .map((name) => ({
       name,
-      url: `/group-files/${encodeURIComponent(task?.accessToken || "")}/${encodeURIComponent(record.id)}/${encodeURIComponent(name)}`,
+      url: `/group-files/${encodeURIComponent(task?.accessToken || "")}/${encodeURIComponent(record.id)}/${encodeURIComponent(name)}?v=${cacheVersion}`,
     }));
 }
 
@@ -439,7 +499,7 @@ function latestExportJob(taskId) {
 
 async function markTaskChanged(task) {
   await invalidateReadyExports(task.id, false);
-  task.lastActivityAt = new Date().toISOString();
+  task.lastActivityAt = beijingIsoString();
   await saveTaskIndex();
 }
 
@@ -658,7 +718,7 @@ async function buildZip(job) {
     const totalBytes = Math.max(1, stats.reduce((sum, stat) => sum + stat.size, 0));
     const exportDir = path.join(taskDir, "exports");
     await fs.mkdir(exportDir, { recursive: true });
-    const output = path.join(exportDir, `${safeSegment(task.name)}_照片_${Date.now()}.zip`);
+    const output = path.join(exportDir, `${safeSegment(task.name)}_照片_${beijingCompactDateTime()}.zip`);
     await fs.unlink(output).catch(() => {});
     job.stage = exportQueue.length ? "正在打包（其他任务等待中）" : "正在打包照片";
     await createStoredZip({
@@ -711,7 +771,7 @@ async function createZipJob(taskId) {
   if (existing) return existing;
   await invalidateReadyExports(taskId, false);
   const task = getTask(taskId);
-  if (task) task.lastActivityAt = new Date().toISOString();
+  if (task) task.lastActivityAt = beijingIsoString();
   await saveTaskIndex();
   const job = {
     id: crypto.randomUUID(),
@@ -848,13 +908,13 @@ const server = http.createServer(async (req, res) => {
       const task = {
         id: taskId,
         name: name.slice(0, 40),
-        createdAt: new Date(now).toISOString(),
+        createdAt: beijingIsoString(now),
         legacySource: false,
         accessToken: createAccessToken(),
         ownerName: ownerName.slice(0, 30),
-        lastActivityAt: new Date(now).toISOString(),
+        lastActivityAt: beijingIsoString(now),
         folderMode,
-        expiresAt: new Date(now + normalizedValidityHours * 60 * 60 * 1000).toISOString(),
+        expiresAt: beijingIsoString(now + normalizedValidityHours * 60 * 60 * 1000),
       };
       await fs.mkdir(taskDirectory(taskId), { recursive: true });
       await saveRecords(taskId, records);
@@ -942,7 +1002,7 @@ const server = http.createServer(async (req, res) => {
           if (!ADMIN_VALIDITY_HOURS.has(hours)) {
             return json(res, 400, { error: "请选择 24 小时、48 小时、7 天、30 天或长期有效。" });
           }
-          task.expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+          task.expiresAt = beijingIsoString(Date.now() + hours * 60 * 60 * 1000);
         }
         await saveTaskIndex();
         return json(res, 200, { ok: true, expiresAt: task.expiresAt });
@@ -1022,8 +1082,6 @@ const server = http.createServer(async (req, res) => {
           const files = parseMultipart(body, req.headers["content-type"])
             .filter((item) => item.field === "photos" && item.filename);
           if (!files.length) return json(res, 400, { error: "没有选择照片" });
-          const dir = recordDirectory(task.id, record);
-          await fs.mkdir(dir, { recursive: true });
           for (const file of files) {
             const ext = extensionFor(file);
             if (![".jpg", ".jpeg", ".png", ".webp", ".heic"].includes(ext) || !file.type.startsWith("image/")) {
@@ -1032,10 +1090,20 @@ const server = http.createServer(async (req, res) => {
             if (file.data.length > 20 * 1024 * 1024) {
               return json(res, 413, { error: `单张照片不能超过 20MB：${file.filename}` });
             }
-            const stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
-            const name = `${safeSegment(record.voucher)}_${stamp}_${crypto.randomBytes(3).toString("hex")}${ext === ".jpeg" ? ".jpg" : ext}`;
-            await fs.writeFile(path.join(dir, name), file.data, { flag: "wx" });
           }
+          await withRecordWriteLock(`${task.id}:${record.id}`, async () => {
+            const dir = recordDirectory(task.id, record);
+            await fs.mkdir(dir, { recursive: true });
+            const existingNames = await fs.readdir(dir);
+            let sequence = nextAttachmentSequence(
+              existingNames.filter((name) => /\.(jpe?g|png|webp|heic)$/i.test(name)),
+            );
+            for (const file of files) {
+              const name = attachmentFileName(record, sequence, extensionFor(file));
+              await fs.writeFile(path.join(dir, name), file.data, { flag: "wx" });
+              sequence += 1;
+            }
+          });
           await markTaskChanged(task);
           return json(res, 201, { ok: true, images: await listImages(task.id, record) });
         }
@@ -1060,9 +1128,23 @@ const server = http.createServer(async (req, res) => {
           }
           const base = path.basename(originalName, path.extname(originalName)).replace(/_r\d+$/, "");
           const normalizedExt = ext === ".jpeg" ? ".jpg" : ext;
-          const newName = `${base}_r${Date.now()}${normalizedExt}`;
-          await fs.writeFile(path.join(dir, newName), file.data, { flag: "wx" });
-          await fs.unlink(originalTarget);
+          const newName = `${base}${normalizedExt}`;
+          await withRecordWriteLock(`${task.id}:${record.id}`, async () => {
+            const newTarget = path.join(dir, newName);
+            const tempTarget = path.join(dir, `.${newName}.${crypto.randomBytes(4).toString("hex")}.tmp`);
+            await fs.writeFile(tempTarget, file.data, { flag: "wx" });
+            try {
+              await fs.rename(tempTarget, newTarget);
+            } catch (error) {
+              if (!["EACCES", "EEXIST", "EPERM"].includes(error.code) || newTarget !== originalTarget) {
+                await fs.unlink(tempTarget).catch(() => {});
+                throw error;
+              }
+              await fs.unlink(originalTarget);
+              await fs.rename(tempTarget, newTarget);
+            }
+            if (newTarget !== originalTarget) await fs.unlink(originalTarget);
+          });
           await markTaskChanged(task);
           return json(res, 200, { ok: true, name: newName, images: await listImages(task.id, record) });
         }

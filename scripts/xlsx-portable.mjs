@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import JSZip from "jszip";
+import { formatBeijingDateTime } from "./beijing-time.mjs";
 
 function decodeXml(value) {
   return String(value ?? "")
@@ -200,7 +201,7 @@ function worksheetXml(payload) {
   const attachmentCount = records.reduce((sum, record) => sum + Number(record.attachmentCount || 0), 0);
   const rows = [
     rowXml(1, [inlineCell("A1", payload.taskName || "凭证拍摄记录", 1)], 32),
-    rowXml(2, [inlineCell("A2", `导出时间：${new Date().toLocaleString("zh-CN")}　记录：${records.length} 条　附件：${attachmentCount} 个`, 2)], 24),
+    rowXml(2, [inlineCell("A2", `导出时间（北京时间）：${formatBeijingDateTime()}　记录：${records.length} 条　附件：${attachmentCount} 个`, 2)], 24),
     rowXml(3, []),
     rowXml(4, ["序号", "日期", "财务组织", "凭证号", "总金额", "附件数量", "状态"]
       .map((value, index) => inlineCell(`${String.fromCharCode(65 + index)}4`, value, 3)), 28),

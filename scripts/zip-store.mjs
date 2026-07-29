@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { once } from "node:events";
+import { beijingParts } from "./beijing-time.mjs";
 
 const crcTable = new Uint32Array(256);
 for (let index = 0; index < 256; index += 1) {
@@ -19,11 +20,11 @@ function updateCrc(crc, chunk) {
 }
 
 function dosDateTime(date) {
-  const value = date instanceof Date ? date : new Date(date);
-  const year = Math.max(1980, value.getFullYear());
+  const value = beijingParts(date);
+  const year = Math.max(1980, value.year);
   return {
-    date: ((year - 1980) << 9) | ((value.getMonth() + 1) << 5) | value.getDate(),
-    time: (value.getHours() << 11) | (value.getMinutes() << 5) | Math.floor(value.getSeconds() / 2),
+    date: ((year - 1980) << 9) | (value.month << 5) | value.day,
+    time: (value.hour << 11) | (value.minute << 5) | Math.floor(value.second / 2),
   };
 }
 
