@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("menu", "start", "stop", "restart", "status")]
   [string]$Action = "menu"
 )
@@ -8,6 +8,7 @@ $PidFile = Join-Path $Root ".voucher-server.pid"
 $LogFile = Join-Path $Root "service.log"
 $ErrorLogFile = Join-Path $Root "service-error.log"
 $ServerFile = Join-Path $Root "server.mjs"
+$PackagedExe = Join-Path $Root "voucher-photo-archive.exe"
 $ConfigFile = Join-Path $Root "config.json"
 $Config = if (Test-Path $ConfigFile) {
   try {
@@ -32,7 +33,10 @@ function Get-ServiceProcess {
   $servicePid = Read-ServicePid
   if (-not $servicePid) { return $null }
   $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $servicePid" -ErrorAction SilentlyContinue
-  if ($processInfo -and $processInfo.CommandLine -like "*server.mjs*") { return $processInfo }
+  if ($processInfo -and (
+    $processInfo.CommandLine -like "*server.mjs*" -or
+    $processInfo.CommandLine -like "*voucher-photo-archive.exe*"
+  )) { return $processInfo }
   return $null
 }
 
@@ -52,22 +56,37 @@ function Start-ServiceApp {
     return
   }
   Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
-  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    throw "没有找到 Node.js，请先安装 Node.js 18 或更高版本。"
-  }
   Push-Location $Root
   try {
-    node -e "require.resolve('jszip')" 2>$null
-    if ($LASTEXITCODE -ne 0) {
-      if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
-        throw "没有找到 npm，请重新安装 Node.js LTS。"
+    if (Test-Path $PackagedExe) {
+      $LaunchFile = $PackagedExe
+      $LaunchArguments = @()
+    } else {
+      if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        throw "没有找到 Node.js，请先安装 Node.js 18 或更高版本，或下载 Windows 便携版。"
       }
-      Write-Host "首次运行，正在自动安装依赖，请稍候……"
-      & npm.cmd install
-      if ($LASTEXITCODE -ne 0) { throw "依赖安装失败，请检查网络后重新运行 service.cmd。" }
+      node -e "require.resolve('jszip')" 2>$null
+      if ($LASTEXITCODE -ne 0) {
+        if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+          throw "没有找到 npm，请重新安装 Node.js LTS。"
+        }
+        Write-Host "首次运行，正在自动安装依赖，请稍候……"
+        & npm.cmd install
+        if ($LASTEXITCODE -ne 0) { throw "依赖安装失败，请检查网络后重新运行 service.cmd。" }
+      }
+      $LaunchFile = "node"
+      $LaunchArguments = @("`"$ServerFile`"")
     }
-    $process = Start-Process -FilePath "node" -ArgumentList "`"$ServerFile`"" -WorkingDirectory $Root `
-      -RedirectStandardOutput $LogFile -RedirectStandardError $ErrorLogFile -WindowStyle Hidden -PassThru
+    $StartOptions = @{
+      FilePath = $LaunchFile
+      WorkingDirectory = $Root
+      RedirectStandardOutput = $LogFile
+      RedirectStandardError = $ErrorLogFile
+      WindowStyle = "Hidden"
+      PassThru = $true
+    }
+    if ($LaunchArguments.Count -gt 0) { $StartOptions.ArgumentList = $LaunchArguments }
+    $process = Start-Process @StartOptions
     Set-Content -Path $PidFile -Value $process.Id -NoNewline
     Start-Sleep -Seconds 1
     if (-not (Get-ServiceProcess)) { throw "启动失败，请查看 $ErrorLogFile" }
