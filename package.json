@@ -1,12 +1,12 @@
 {
   "name": "voucher-photo-archive",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "bin": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --check public/admin.js && node --check scripts/xlsx-portable.mjs && node --check scripts/zip-store.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/admin.js && node --check scripts/beijing-time.mjs && node --check scripts/xlsx-portable.mjs && node --check scripts/zip-store.mjs",
     "build:windows": "pkg . --target node24-win-x64 --output dist/build/voucher-photo-archive.exe --compress Brotli"
   },
   "dependencies": {

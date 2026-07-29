@@ -2,6 +2,16 @@ const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 let selectedGroup = null;
+const beijingDateTime = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 async function api(url, options) {
   const response = await fetch(url, options);
@@ -21,7 +31,7 @@ function toast(message) {
   toast.timer = setTimeout(() => $("#toast").classList.remove("show"), 2600);
 }
 function dateTime(value) {
-  return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
+  return value ? beijingDateTime.format(new Date(value)) : "—";
 }
 function exportStatus(job) {
   if (!job) return "尚未打包";
@@ -77,7 +87,7 @@ function render(data) {
   $("#group-total").textContent = `${used} 组`;
   $("#admin-empty").hidden = used > 0;
   $("#admin-group-list").innerHTML = [...data.groups]
-    .sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)))
+    .sort((a, b) => Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt))
     .map((group) => `
       <article class="admin-group" data-id="${escapeHtml(group.id)}">
         <div><h3>${escapeHtml(group.name)}</h3><span class="owner">使用人：${escapeHtml(group.ownerName)}</span></div>
