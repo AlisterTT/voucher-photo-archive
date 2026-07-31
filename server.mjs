@@ -1040,6 +1040,13 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, await publicTaskSummary(task));
       }
 
+      if (req.method === "GET" && parts[3] === "sync" && parts.length === 4) {
+        return json(res, 200, {
+          lastActivityAt: task.lastActivityAt,
+          expiresAt: task.expiresAt || null,
+        });
+      }
+
       if (req.method === "GET" && parts[3] === "records" && parts.length === 4) {
         return json(res, 200, await recordsWithCounts(task.id));
       }

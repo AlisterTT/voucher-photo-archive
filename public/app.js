@@ -16,7 +16,10 @@ const state = {
   exportPollTimer: null,
   expiryTimer: null,
   expiryRefreshTriggered: false,
+  syncTimer: null,
+  syncInFlight: false,
 };
+const GROUP_SYNC_INTERVAL = 2000;
 const money = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" });
 const beijingDateTime = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -36,7 +39,11 @@ async function api(url, options) {
   const response = await fetch(url, options);
   const type = response.headers.get("content-type") || "";
   const body = type.includes("json") ? await response.json() : {};
-  if (!response.ok) throw new Error(body.error || "操作失败");
+  if (!response.ok) {
+    const error = new Error(body.error || "操作失败");
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
@@ -202,6 +209,7 @@ async function loadGroup() {
   updateYears();
   render();
   scheduleExportPoll();
+  scheduleGroupSync();
   showCreatedLinkReminder();
 }
 
@@ -212,6 +220,7 @@ async function loadLanding() {
   $("#landing").hidden = false;
   $("#group-main").hidden = true;
   clearInterval(state.expiryTimer);
+  clearTimeout(state.syncTimer);
   $("#expiry-countdown").hidden = true;
   try {
     const capacity = await api("/api/capacity");
@@ -350,6 +359,64 @@ async function refreshTaskStats() {
   renderTaskHeader();
   renderExportStatus();
   scheduleExportPoll();
+}
+
+function scheduleGroupSync(delay = GROUP_SYNC_INTERVAL) {
+  clearTimeout(state.syncTimer);
+  if (!state.accessToken || !state.task) return;
+  state.syncTimer = setTimeout(async () => {
+    if (!document.hidden) await syncGroupChanges();
+    scheduleGroupSync();
+  }, delay);
+}
+
+async function syncGroupChanges() {
+  if (state.syncInFlight || !state.task) return;
+  state.syncInFlight = true;
+  try {
+    const marker = await api(groupApi("/sync"));
+    const contentChanged = marker.lastActivityAt !== state.task.lastActivityAt;
+    const expiryChanged = marker.expiresAt !== state.task.expiresAt;
+    if (!contentChanged && !expiryChanged) return;
+
+    if (contentChanged) {
+      const selectedIdAtStart = state.selected?.id || null;
+      const refreshMarker = marker.lastActivityAt;
+      const [task, vouchers, exportStatus] = await Promise.all([
+        api(groupApi()),
+        api(groupApi("/records")),
+        api(groupApi("/export-status")),
+      ]);
+      const currentSelectedId = state.selected?.id || null;
+      state.task = task;
+      state.task.lastActivityAt = refreshMarker;
+      state.vouchers = vouchers;
+      state.exportJob = exportStatus.job;
+      state.selected = currentSelectedId
+        ? state.vouchers.find((item) => item.id === currentSelectedId) || null
+        : null;
+      updateYears();
+      scheduleExportPoll();
+      if (currentSelectedId && !state.selected) {
+        closeVoucher();
+      } else if (selectedIdAtStart && currentSelectedId === selectedIdAtStart && state.selected) {
+        await refreshImages();
+      } else {
+        render();
+      }
+    } else {
+      state.task.expiresAt = marker.expiresAt;
+      renderExpiryCountdown();
+    }
+  } catch (error) {
+    if ([404, 410].includes(error.status)) {
+      state.task = null;
+      clearTimeout(state.syncTimer);
+      location.reload();
+    }
+  } finally {
+    state.syncInFlight = false;
+  }
 }
 
 async function openVoucher(id) {
@@ -650,6 +717,12 @@ document.addEventListener("keydown", (event) => {
   if (!$("#preview").hidden) return closePreview();
   if (state.selected) return closeVoucher();
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.task) {
+    syncGroupChanges();
+    scheduleGroupSync();
+  }
+});
 
 if (state.accessToken) {
   $("#admin-entry").hidden = true;
@@ -658,6 +731,7 @@ if (state.accessToken) {
     $("#landing").hidden = false;
     $("#group-main").hidden = true;
     clearInterval(state.expiryTimer);
+    clearTimeout(state.syncTimer);
     $("#expiry-countdown").hidden = true;
     $(".landing-headline").innerHTML = "这个拍摄组<br />无法打开";
     $(".landing-summary").textContent = error.message;
