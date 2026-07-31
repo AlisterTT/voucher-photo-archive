@@ -1,3 +1,5 @@
+import { canApplyRecordResponse, recordsNeedRefresh } from "./sync-state.js";
+
 const $ = (selector) => document.querySelector(selector);
 const enc = encodeURIComponent;
 const pathToken = /^\/g\/([^/]+)\/?$/.exec(location.pathname)?.[1] || null;
@@ -18,6 +20,7 @@ const state = {
   expiryRefreshTriggered: false,
   syncTimer: null,
   syncInFlight: false,
+  recordsSyncedAt: null,
 };
 const GROUP_SYNC_INTERVAL = 2000;
 const money = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" });
@@ -194,6 +197,7 @@ function render() {
 }
 
 async function loadGroup() {
+  const marker = await api(groupApi("/sync"));
   const [task, vouchers, exportStatus] = await Promise.all([
     api(groupApi()),
     api(groupApi("/records")),
@@ -201,6 +205,7 @@ async function loadGroup() {
   ]);
   state.task = task;
   state.vouchers = vouchers;
+  state.recordsSyncedAt = marker.lastActivityAt;
   state.exportJob = exportStatus.job;
   document.body.classList.remove("landing-mode", "landing-mode-error");
   $("#landing").hidden = true;
@@ -293,17 +298,19 @@ async function createRotatedBlob(url, degrees) {
 
 async function saveRotation() {
   if (!state.selected || !state.previewImage?.rotation) return;
+  const recordId = state.selected.id;
+  const previewImage = { ...state.previewImage };
   const button = $("#save-rotation");
   button.disabled = true;
   button.textContent = "保存中…";
   try {
-    const rotated = await createRotatedBlob(state.previewImage.url, state.previewImage.rotation);
+    const rotated = await createRotatedBlob(previewImage.url, previewImage.rotation);
     const ext = rotated.type === "image/png" ? ".png" : rotated.type === "image/webp" ? ".webp" : ".jpg";
     const form = new FormData();
     form.append("photo", rotated, `rotated${ext}`);
-    await api(groupApi(`/records/${enc(state.selected.id)}/images/${enc(state.previewImage.name)}`), { method: "PUT", body: form });
-    closePreview();
-    await refreshImages();
+    await api(groupApi(`/records/${enc(recordId)}/images/${enc(previewImage.name)}`), { method: "PUT", body: form });
+    if (state.selected?.id === recordId && state.previewImage?.name === previewImage.name) closePreview();
+    await refreshImages(recordId);
     await refreshTaskStats();
     toast("旋转后的照片已保存；下次导出会重新打包");
   } catch (error) { toast(error.message); }
@@ -321,11 +328,12 @@ function resolveDeleteConfirmation(value) {
   state.deleteResolver = null;
 }
 
-async function refreshImages() {
-  if (!state.selected) return;
-  const images = await api(groupApi(`/records/${enc(state.selected.id)}/images`));
+async function refreshImages(recordId = state.selected?.id) {
+  if (!recordId) return false;
+  const images = await api(groupApi(`/records/${enc(recordId)}/images`));
+  if (!canApplyRecordResponse(recordId, state.selected?.id)) return false;
   state.selected.imageCount = images.length;
-  const backing = state.vouchers.find((item) => item.id === state.selected.id);
+  const backing = state.vouchers.find((item) => item.id === recordId);
   if (backing) backing.imageCount = images.length;
   $("#photo-count").textContent = `${images.length} 张`;
   $("#photo-grid").innerHTML = images.map((image) => `
@@ -340,13 +348,14 @@ async function refreshImages() {
   document.querySelectorAll(".photo-delete").forEach((button) => button.addEventListener("click", async () => {
     if (!await askDeleteConfirmation()) return;
     try {
-      await api(groupApi(`/records/${enc(state.selected.id)}/images/${enc(button.dataset.name)}`), { method: "DELETE" });
-      await refreshImages();
+      await api(groupApi(`/records/${enc(recordId)}/images/${enc(button.dataset.name)}`), { method: "DELETE" });
+      await refreshImages(recordId);
       await refreshTaskStats();
       toast("照片已删除；旧照片包已失效");
     } catch (error) { toast(error.message); }
   }));
   render();
+  return true;
 }
 
 async function refreshTaskStats() {
@@ -375,7 +384,7 @@ async function syncGroupChanges() {
   state.syncInFlight = true;
   try {
     const marker = await api(groupApi("/sync"));
-    const contentChanged = marker.lastActivityAt !== state.task.lastActivityAt;
+    const contentChanged = recordsNeedRefresh(marker.lastActivityAt, state.recordsSyncedAt);
     const expiryChanged = marker.expiresAt !== state.task.expiresAt;
     if (!contentChanged && !expiryChanged) return;
 
@@ -389,8 +398,8 @@ async function syncGroupChanges() {
       ]);
       const currentSelectedId = state.selected?.id || null;
       state.task = task;
-      state.task.lastActivityAt = refreshMarker;
       state.vouchers = vouchers;
+      state.recordsSyncedAt = refreshMarker;
       state.exportJob = exportStatus.job;
       state.selected = currentSelectedId
         ? state.vouchers.find((item) => item.id === currentSelectedId) || null
@@ -434,7 +443,7 @@ async function openVoucher(id) {
   $("#backdrop").hidden = false;
   $("#sheet").hidden = false;
   document.body.style.overflow = "hidden";
-  try { await refreshImages(); } catch (error) { toast(error.message); }
+  try { await refreshImages(item.id); } catch (error) { toast(error.message); }
 }
 
 function closeVoucher() {
@@ -446,6 +455,7 @@ function closeVoucher() {
 
 async function uploadPhotos(files, label) {
   if (!state.selected || !files.length) return;
+  const recordId = state.selected.id;
   const form = new FormData();
   [...files].forEach((file) => form.append("photos", file));
   const span = label.querySelector("span");
@@ -453,8 +463,8 @@ async function uploadPhotos(files, label) {
   label.classList.add("loading");
   span.textContent = `正在上传 ${files.length} 张…`;
   try {
-    await api(groupApi(`/records/${enc(state.selected.id)}/images`), { method: "POST", body: form });
-    await refreshImages();
+    await api(groupApi(`/records/${enc(recordId)}/images`), { method: "POST", body: form });
+    await refreshImages(recordId);
     await refreshTaskStats();
     toast(`已上传 ${files.length} 张；需要调整方向可点照片旋转`);
   } catch (error) { toast(error.message); }
