@@ -1,6 +1,6 @@
 {
   "name": "voucher-photo-archive",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "bin": "server.mjs",
